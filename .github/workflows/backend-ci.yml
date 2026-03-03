@@ -1,86 +1,131 @@
-name: Backend CI - Build & Push Docker
+name: Backend - Build, Nexus, Sonar, Docker Hub
 
 on:
-  workflow_dispatch:
   push:
     branches:
       - main
       - develop
       - feature/*
     paths:
-      - 'backend/**'           # lance seulement si backend modifié
+      - 'backend/**'
   pull_request:
     branches:
       - main
       - develop
     paths:
       - 'backend/**'
+  workflow_dispatch:   # Permet de lancer manuellement depuis l'interface
 
 jobs:
-  build-and-push:
+  build-and-deploy:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
+
+    env:
+      REGISTRY: ilefkristou/docker-spring-boot
+      JAVA_HOME: ${{ github.workspace }}/.java   # Pas besoin du chemin fixe Linux, on utilise setup-java
+      AWS_REGION: us-east-1                      # gardé mais non utilisé pour l'instant
+      CLUSTER_NAME: mykubernetes                 # gardé mais non utilisé ici
 
     steps:
       # ────────────────────────────────────────────────
-      # 1. Checkout du code
+      # 1. Checkout (équivalent CHECKOUT GIT)
       # ────────────────────────────────────────────────
-      - name: Checkout repository
+      - name: Checkout code
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0   # utile si tu utilises git describe ou sonar
+          fetch-depth: 0   # utile pour sonar + git describe si besoin
 
       # ────────────────────────────────────────────────
-      # 2. Setup Java 21 (ou 17 selon ton projet)
+      # 2. Setup Java 17 (équivalent JAVA_HOME + PATH)
       # ────────────────────────────────────────────────
-      - name: Setup JDK 21
+      - name: Setup JDK 17
         uses: actions/setup-java@v4
         with:
-          java-version: '21'
-          distribution: 'temurin'   # ou 'zulu', 'corretto', etc.
+          java-version: '17'
+          distribution: 'temurin'
           cache: maven
 
       # ────────────────────────────────────────────────
-      # 3. Maven clean + build + skip tests (rapide)
+      # 3. MVN CLEAN
       # ────────────────────────────────────────────────
-      - name: Build with Maven (skip tests)
+      - name: Maven Clean
         working-directory: ./backend
-        run: mvn clean package -DskipTests
+        run: mvn clean
 
       # ────────────────────────────────────────────────
-      # 4. Tests unitaires (activé sur PR + main)
+      # 4. ARTIFACT CONSTRUCTION (package + skip tests + profile)
       # ────────────────────────────────────────────────
-      - name: Run Unit Tests
-        if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
+      - name: Maven Package (skip tests)
+        working-directory: ./backend
+        run: mvn package -Dmaven.test.skip=true -P test-coverage
+
+      # ────────────────────────────────────────────────
+      # 5. UNIT TESTS (séparé, comme dans Jenkins)
+      # ────────────────────────────────────────────────
+      - name: Maven Unit Tests
         working-directory: ./backend
         run: mvn test
 
       # ────────────────────────────────────────────────
-      # 5. SonarQube (optionnel – décommente si tu as Sonar)
+      # 6. MVN SONARQUBE
       # ────────────────────────────────────────────────
-      # - name: SonarQube Scan
-      #   if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
-      #   working-directory: ./backend
-      #   env:
-      #     SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-      #   run: |
-      #     mvn sonar:sonar \
-      #       -Dsonar.projectKey=health-app-backend \
-      #       -Dsonar.host.url=https://your-sonarqube-url \
-      #       -Dsonar.token=${{ secrets.SONAR_TOKEN }}
+      - name: SonarQube Scan
+        working-directory: ./backend
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: |
+          mvn sonar:sonar \
+            -Dsonar.projectKey=docker-spring-boot \
+            -Dsonar.host.url=http://sonarqube:9000 \
+            -Dsonar.token=${SONAR_TOKEN}
 
       # ────────────────────────────────────────────────
-      # 6. Setup Docker Buildx + QEMU (multi-arch si besoin)
+      # 7. PUSH ARTIFACT TO NEXUS (équivalent exact de ton bloc)
       # ────────────────────────────────────────────────
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
+      - name: Deploy JAR to Nexus
+        working-directory: ./backend
+        env:
+          NEXUS_USER:     ${{ secrets.NEXUS_USERNAME }}
+          NEXUS_PASS:     ${{ secrets.NEXUS_PASSWORD }}
+          BUILD_NUMBER:   ${{ github.run_number }}
+        run: |
+          echo "Creating Maven settings.xml..."
+          mkdir -p ~/.m2
+          cat > ~/.m2/settings.xml << EOF
+          <settings>
+            <servers>
+              <server>
+                <id>nexus</id>
+                <username>${NEXUS_USER}</username>
+                <password>${NEXUS_PASS}</password>
+              </server>
+            </servers>
+          </settings>
+          EOF
 
+          echo "Searching for JAR..."
+          JAR_FILE=$(find target -name "*.jar" | head -n 1)
+          echo "Found: $JAR_FILE"
+
+          mvn deploy:deploy-file \
+            -DgroupId=com.student \
+            -DartifactId=student-management \
+            -Dversion=1.0.${BUILD_NUMBER} \
+            -Dpackaging=jar \
+            -Dfile=${JAR_FILE} \
+            -DrepositoryId=nexus \
+            -Durl=http://nexus:8081/repository/maven-releases/ \
+            -DgeneratePom=true \
+            -s ~/.m2/settings.xml
+
+      # ────────────────────────────────────────────────
+      # 8. Setup Docker Buildx
+      # ────────────────────────────────────────────────
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
       # ────────────────────────────────────────────────
-      # 7. Login Docker Hub
+      # 9. Login Docker Hub
       # ────────────────────────────────────────────────
       - name: Login to Docker Hub
         uses: docker/login-action@v3
@@ -89,21 +134,14 @@ jobs:
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       # ────────────────────────────────────────────────
-      # 8. Build & Push Docker image
+      # 10. BUILD & PUSH DOCKER IMAGE (équivalent BUILD + PUSH)
       # ────────────────────────────────────────────────
       - name: Build and push Docker image
         uses: docker/build-push-action@v6
         with:
           context: ./backend
-          file: ./backend/Dockerfile           # ← assure-toi d'avoir ce fichier !
-          push: ${{ github.event_name != 'pull_request' }}   # push seulement sur push (pas sur PR)
+          file: ./backend/Dockerfile               # ← assure-toi qu'il existe !
+          push: true
           tags: |
-            ilefkristou/docker-spring-boot:${{ github.sha }}
-            ilefkristou/docker-spring-boot:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      # Optionnel : version BUILD_NUMBER → tag avec github.run_number
-      # tags: |
-      #   ilefkristou/docker-spring-boot:${{ github.run_number }}
-      #   ilefkristou/docker-spring-boot:latest
+            ${{ env.REGISTRY }}:${{ github.run_number }}
+            ${{ env.REGISTRY }}:latest
