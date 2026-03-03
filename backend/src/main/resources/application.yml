@@ -1,0 +1,12 @@
+server:
+  port: 9000               # change si tu veux
+
+spring:
+  application:
+    name: mini-test
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus

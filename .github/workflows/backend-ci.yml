@@ -1,0 +1,108 @@
+name: Backend CI - Build & Push Docker
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+      - feature/*
+    paths:
+      - 'backend/**'           # lance seulement si backend modifié
+  pull_request:
+    branches:
+      - main
+      - develop
+    paths:
+      - 'backend/**'
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      # ────────────────────────────────────────────────
+      # 1. Checkout du code
+      # ────────────────────────────────────────────────
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # utile si tu utilises git describe ou sonar
+
+      # ────────────────────────────────────────────────
+      # 2. Setup Java 21 (ou 17 selon ton projet)
+      # ────────────────────────────────────────────────
+      - name: Setup JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'   # ou 'zulu', 'corretto', etc.
+          cache: maven
+
+      # ────────────────────────────────────────────────
+      # 3. Maven clean + build + skip tests (rapide)
+      # ────────────────────────────────────────────────
+      - name: Build with Maven (skip tests)
+        working-directory: ./backend
+        run: mvn clean package -DskipTests
+
+      # ────────────────────────────────────────────────
+      # 4. Tests unitaires (activé sur PR + main)
+      # ────────────────────────────────────────────────
+      - name: Run Unit Tests
+        if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
+        working-directory: ./backend
+        run: mvn test
+
+      # ────────────────────────────────────────────────
+      # 5. SonarQube (optionnel – décommente si tu as Sonar)
+      # ────────────────────────────────────────────────
+      # - name: SonarQube Scan
+      #   if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
+      #   working-directory: ./backend
+      #   env:
+      #     SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      #   run: |
+      #     mvn sonar:sonar \
+      #       -Dsonar.projectKey=health-app-backend \
+      #       -Dsonar.host.url=https://your-sonarqube-url \
+      #       -Dsonar.token=${{ secrets.SONAR_TOKEN }}
+
+      # ────────────────────────────────────────────────
+      # 6. Setup Docker Buildx + QEMU (multi-arch si besoin)
+      # ────────────────────────────────────────────────
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # ────────────────────────────────────────────────
+      # 7. Login Docker Hub
+      # ────────────────────────────────────────────────
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # ────────────────────────────────────────────────
+      # 8. Build & Push Docker image
+      # ────────────────────────────────────────────────
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          file: ./backend/Dockerfile           # ← assure-toi d'avoir ce fichier !
+          push: ${{ github.event_name != 'pull_request' }}   # push seulement sur push (pas sur PR)
+          tags: |
+            ilefkristou/docker-spring-boot:${{ github.sha }}
+            ilefkristou/docker-spring-boot:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # Optionnel : version BUILD_NUMBER → tag avec github.run_number
+      # tags: |
+      #   ilefkristou/docker-spring-boot:${{ github.run_number }}
+      #   ilefkristou/docker-spring-boot:latest
