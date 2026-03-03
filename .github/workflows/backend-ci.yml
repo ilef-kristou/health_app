@@ -1,6 +1,7 @@
 name: Backend CI - Build & Push Docker
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - main
