@@ -1,5 +1,5 @@
 server:
-  port: 9000               # change si tu veux
+  port: 9001               # change si tu veux
 
 spring:
   application:
