@@ -76,7 +76,7 @@ jobs:
         run: |
           mvn sonar:sonar \
             -Dsonar.projectKey=docker-spring-boot \
-            -Dsonar.host.url=http://sonarqube:9000 \
+            -Dsonar.host.url=https://psychometrical-nelda-bemoaningly.ngrok-free.dev \
             -Dsonar.token=${SONAR_TOKEN}
 
       # ────────────────────────────────────────────────
