@@ -1,0 +1,81 @@
+version: '3.8'
+
+services:
+
+  jenkins:
+    image: jenkins/jenkins:lts
+    container_name: jenkins2
+    ports:
+      - "8081:8080"
+      - "50000:50000"
+    volumes:
+      - jenkins_home:/var/jenkins_home
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - devops-net
+
+  sonarqube:
+    image: sonarqube:latest
+    container_name: sonarqube2
+    ports:
+      - "9000:9000"
+    environment:
+      - SONAR_ES_BOOTSTRAP_CHECKS_DISABLE=true
+    volumes:
+      - sonarandnexus_SonarQube_data:/opt/sonarqube/data
+      - sonarandnexus_SonarQube_extensions:/opt/sonarqube/extensions
+      - sonarandnexus_SonarQube_logs:/opt/sonarqube/logs
+    networks:
+      - devops-net
+
+  nexus:
+    image: sonatype/nexus3
+    container_name: nexus
+    ports:
+      - "8082:8081"
+    volumes:
+      - sonarandnexus_nexus-data:/nexus-data
+    networks:
+      - devops-net
+
+  prometheus:
+    image: prom/prometheus
+    container_name: prometheus2
+    ports:
+      - "9091:9090"
+    volumes:
+      - C:/Users/ilefk/Downloads/prometheus.yml:/etc/prometheus/prometheus.yml
+    networks:
+      - devops-net
+
+  grafana:
+    image: grafana/grafana
+    container_name: grafana2
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    volumes:
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      - prometheus
+    networks:
+      - devops-net
+
+volumes:
+  jenkins_home:
+    external: true
+  sonarandnexus_SonarQube_data:
+    external: true
+  sonarandnexus_SonarQube_extensions:
+    external: true
+  sonarandnexus_SonarQube_logs:
+    external: true
+  sonarandnexus_nexus-data:
+    external: true
+  grafana_data:
+    external: true
+
+networks:
+  devops-net:
+    external: true
