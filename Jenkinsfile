@@ -7,13 +7,8 @@ pipeline {
         dockerImage = ''
         JAVA_HOME = "/usr/lib/jvm/java-17-openjdk-amd64"
         PATH = "$JAVA_HOME/bin:$PATH"
-
         SONAR_URL = "http://sonarqube:9000"
         NEXUS_URL = "http://nexus:8081"
-
-        NEXUS_USERNAME = "admin"
-        NEXUS_PASSWORD = "ilefkristou123"
-
         IMAGE_NAME = "${registry}:${BUILD_NUMBER}"
     }
 
@@ -87,13 +82,19 @@ pipeline {
         stage('Deploy to Nexus') {
             steps {
                 dir('backend') {
-                    sh """
-                        ./mvnw deploy \
-                        -DaltDeploymentRepository=nexus-releases::default::\${NEXUS_URL}/repository/maven-releases/ \
-                        -DaltSnapshotDeploymentRepository=nexus-snapshots::default::\${NEXUS_URL}/repository/maven-snapshots/ \
-                        -Dusername=\${NEXUS_USERNAME} \
-                        -Dpassword=\${NEXUS_PASSWORD}
-                    """
+                    withCredentials([usernamePassword(
+                        credentialsId: 'nexus-credentials',
+                        usernameVariable: 'NEXUS_USERNAME',
+                        passwordVariable: 'NEXUS_PASSWORD'
+                    )]) {
+                        sh """
+                            ./mvnw deploy \
+                            -DaltDeploymentRepository=nexus-releases::default::\${NEXUS_URL}/repository/maven-releases/ \
+                            -DaltSnapshotDeploymentRepository=nexus-snapshots::default::\${NEXUS_URL}/repository/maven-snapshots/ \
+                            -Dusername=\${NEXUS_USERNAME} \
+                            -Dpassword=\${NEXUS_PASSWORD}
+                        """
+                    }
                 }
             }
         }
