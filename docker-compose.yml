@@ -8,6 +8,8 @@ services:
     ports:
       - "8081:8080"
     user: root
+    entrypoint: >
+      bash -c "curl -fsSL https://download.docker.com/linux/static/stable/x86_64/docker-24.0.7.tgz | tar xz --strip-components=1 -C /usr/bin docker/docker && chmod +x /usr/bin/docker && chmod 666 /var/run/docker.sock && /usr/bin/tini -- /usr/local/bin/jenkins.sh"
     volumes:
       - jenkins_home:/var/jenkins_home
       - /var/run/docker.sock:/var/run/docker.sock
