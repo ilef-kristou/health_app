@@ -17,13 +17,7 @@ pipeline {
 
         stage('Checkout Git') {
             steps {
-                checkout scmGit(
-                    branches: [[name: '*/test']],
-                    userRemoteConfigs: [[
-                url: 'https://github.com/ilef-kristou/health_app.git',
-                credentialsId: 'github-credentials'
-            ]]
-                )
+                checkout scm
             }
         }
 
