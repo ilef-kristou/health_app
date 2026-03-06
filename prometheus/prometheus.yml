@@ -1,0 +1,42 @@
+global:
+  scrape_interval:     15s          # À quelle fréquence scraper les métriques
+  evaluation_interval: 15s          # À quelle fréquence évaluer les règles d'alerte (si tu en ajoutes)
+
+# Alertmanager (optionnel – tu peux le commenter si tu n'en utilises pas)
+# alerting:
+#   alertmanagers:
+#     - static_configs:
+#         - targets: ['localhost:9093']
+
+# Règles d'enregistrement / alerting (optionnel pour commencer)
+# rule_files:
+#   - "first_rules.yml"
+#   - "my_rules/*.yml"
+
+scrape_configs:
+  # Job pour surveiller Prometheus lui-même (très utile pour debugger)
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # Job pour ton application Spring Boot (health-app)
+  - job_name: 'health-app-backend'
+    metrics_path: /actuator/prometheus     # ← chemin obligatoire pour Spring Boot + Micrometer
+    scrape_interval: 10s                   # plus fréquent que global si tu veux voir vite les changements
+    scrape_timeout:  10s
+
+    static_configs:
+      # Choisis UNE SEULE ligne selon ta situation réelle :
+
+      # 1. Application lancée sur l'hôte (pas dans Docker) – le plus fréquent en dev local
+      - targets: ['health-app:9001']
+
+      # 2. Application lancée dans un container sur le même réseau Docker que Prometheus
+      #    → remplace "health-app" par le vrai nom de ton container
+      # - targets: ['health-app:8080']
+
+      # 3. Application sur une autre machine / VM (remplace 192.168.1.100 par la vraie IP)
+      # - targets: ['192.168.1.100:8080']
+
+      # 4. Si tu es sur Linux pur (pas Docker Desktop) → souvent bridge network
+      # - targets: ['172.17.0.1:8080']

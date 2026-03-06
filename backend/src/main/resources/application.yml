@@ -1,9 +1,16 @@
 server:
-  port: 9001               # change si tu veux
+  port: 9001
 
 spring:
   application:
     name: mini-test
+  datasource:
+    url: jdbc:postgresql://postgres:5432/healthdb
+    username: admin
+    password: admin123
+  jpa:
+    hibernate:
+      ddl-auto: update
 
 management:
   endpoints:
